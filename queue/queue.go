@@ -49,7 +49,7 @@ func (tx *Tx) ReEnqueueMessage(key []byte,queue string,msg *qmodel.Message) erro
 	return bkt.Put(key,data)
 }
 
-func (tx *Tx) DequeueMessage(queue string) (key []byte,msg *qmodel.Message,err error) {
+func (tx *Tx) Peek(queue string) (key []byte,msg *qmodel.Message,err error) {
 	bkt := tx.tx.Bucket([]byte(queue))
 	if bkt==nil { err = io.EOF; return }
 	k,v := bkt.Cursor().First()
@@ -61,6 +61,50 @@ func (tx *Tx) DequeueMessage(queue string) (key []byte,msg *qmodel.Message,err e
 	copy(key,k)
 	return
 }
+
+func (tx *Tx) Fetch(queue string) *Fetch {
+	bkt := tx.tx.Bucket([]byte(queue))
+	if bkt==nil { return &Fetch{} }
+	return &Fetch{false,bkt.Cursor()}
+}
+
+type Fetch struct{
+	b bool
+	c *bolt.Cursor
+}
+func (f *Fetch) Next() (key []byte,msg *qmodel.Message,err error) {
+	var k,v []byte
+	if f.c==nil { err = io.EOF; return }
+	if f.b {
+		k,v = f.c.First()
+		f.b = true
+	} else {
+		k,v = f.c.Next()
+	}
+	if len(k)==0 { err = io.EOF; return }
+	msg = new(qmodel.Message)
+	err = msgpack.Unmarshal(v,msg)
+	if err!=nil { msg = nil; return }
+	key = make([]byte,len(k))
+	copy(key,k)
+	return
+}
+
+func (tx *Tx) Remove(queue string,key []byte) error {
+	bkt := tx.tx.Bucket([]byte(queue))
+	if bkt==nil { return nil }
+	return bkt.Delete(key)
+}
+func (tx *Tx) RemoveAll(queue string,keys [][]byte) error {
+	bkt := tx.tx.Bucket([]byte(queue))
+	if bkt==nil { return nil }
+	for _,key := range keys {
+		err := bkt.Delete(key)
+		if err!=nil { return err }
+	}
+	return nil
+}
+
 func (tx *Tx) Enqueue(queue string,from string, to []string, r io.Reader) error {
 	data,err := ioutil.ReadAll(r)
 	if err!=nil { return err }

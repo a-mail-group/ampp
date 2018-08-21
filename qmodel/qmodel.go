@@ -14,3 +14,4 @@ type Message struct{
 	To []string
 	Body []byte
 }
+
