@@ -17,11 +17,9 @@ import "io/ioutil"
 import "io"
 import "time"
 
-type Message struct{
-	From string
-	To []string
-	Body []byte
-}
+import "github.com/a-mail-group/ampp/qmodel"
+
+type Message qmodel.Message
 
 type Queue struct{
 	DB *bolt.DB
