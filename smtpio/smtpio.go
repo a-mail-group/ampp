@@ -16,6 +16,7 @@ import "github.com/emersion/go-sasl"
 import "github.com/a-mail-group/ampp/queue"
 import "io"
 import "bytes"
+import "crypto/tls"
 
 type Input struct{
 	Q *queue.Queue
@@ -39,8 +40,8 @@ type Output struct{
 	N string
 }
 
-func (i *Output) ProcessSimple(addr string, a sasl.Client) {
-	i.Q.Process(func(tx *queue.Tx) error {
+func (i *Output) ProcessSimple(addr string, a sasl.Client) error {
+	return i.Q.Process(func(tx *queue.Tx) error {
 		f := tx.Fetch(i.N)
 		keys := make([][]byte,1024)
 		for {
@@ -50,8 +51,58 @@ func (i *Output) ProcessSimple(addr string, a sasl.Client) {
 			e = smtp.SendMail(addr,a,m.From,m.To,bytes.NewReader(m.Body))
 			if e!=nil { break } // Network errors.
 			keys = append(keys,k)
+			if len(keys)>=1024 {
+				tx.RemoveAll(i.N,keys) // XXX ignore errors!
+				keys = keys[:0]
+			}
 		}
 		tx.RemoveAll(i.N,keys) // XXX ignore errors!
+		return nil
+	})
+}
+
+func (i *Output) ProcessFast(hostname string,addr string, a sasl.Client) error {
+	c,err := smtp.Dial(addr)
+	if err!=nil { return err }
+	defer c.Close()
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		config := &tls.Config{ServerName: hostname}
+		if err = c.StartTLS(config); err != nil {
+			return err
+		}
+	}
+	if ok, _ := c.Extension("AUTH"); ok && a!=nil {
+		if err = c.Auth(a); err != nil {
+			return err
+		}
+	}
+	return i.Q.Process(func(tx *queue.Tx) error {
+		f := tx.Fetch(i.N)
+		keys := make([][]byte,1024)
+		for {
+			k,m,e := f.Next()
+			if e==io.EOF { break }
+			if e!=nil { keys = append(keys,k); continue } // XXX ignores broken messages.
+			e = c.Mail(m.From)
+			if e!=nil { break }
+			for _,to := range m.To {
+				e = c.Rcpt(to)
+				if e!=nil { break }
+			}
+			w,e := c.Data()
+			if e!=nil { break }
+			_,e = w.Write(m.Body)
+			if e!=nil { break }
+			e = w.Close()
+			if e!=nil { break }
+			keys = append(keys,k)
+			if len(keys)>=1024 {
+				tx.RemoveAll(i.N,keys) // XXX ignore errors!
+				keys = keys[:0]
+			}
+		}
+		tx.RemoveAll(i.N,keys) // XXX ignore errors!
+		c.Quit()
 		return nil
 	})
 }
