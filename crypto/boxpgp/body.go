@@ -80,10 +80,13 @@ func EncryptEMail(raw []byte,hdr message.Header,keys []*openpgp.Entity) (result 
 		ovh = len(k)+4 // ^<Key>: <Value>\r\n$
 		for _,v := range vv { lr+= ovh+len(v) }
 	}
+	//hdr.Set("X-Size",fmt.Sprintf("%d",len(raw)))
+	/*
 	if lr>wr0.Len() {
 		hdr.Set("Subject","<Enclosed-B>")
 		delete(hdr,XPgpEnvelope)
 	}
+	*/
 	result,err = message.New(hdr,wr0)
 	return
 }
