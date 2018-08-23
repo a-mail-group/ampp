@@ -22,7 +22,7 @@ import "compress/flate"
 var (
 	ENotRemail = errors.New("No Remailer Message")
 	EInvalidArmor = errors.New("Invalid ASCII armor")
-	EUnknownEncryptio = errors.New("UnknownEncryption")
+	EUnknownEncryption = errors.New("UnknownEncryption")
 )
 
 var (
@@ -63,7 +63,7 @@ restart:
 		body = nbody
 		goto restart
 	default:
-		err = EUnknownEncryptio
+		err = EUnknownEncryption
 		return
 	}
 	
